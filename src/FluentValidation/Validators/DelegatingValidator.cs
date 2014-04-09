@@ -27,14 +27,22 @@ namespace FluentValidation.Validators {
 
 	public class DelegatingValidator : IPropertyValidator, IDelegatingValidator {
 		private readonly Func<object, bool> condition;
+		private readonly Func<object, Task<bool>> asyncCondition;
 		public IPropertyValidator InnerValidator { get; private set; }
 
 		public virtual bool IsAsync {
-			get { return InnerValidator.IsAsync; }
+			get { return InnerValidator.IsAsync || asyncCondition != null; }
 		}
 
 		public DelegatingValidator(Func<object, bool> condition, IPropertyValidator innerValidator) {
 			this.condition = condition;
+			this.asyncCondition = null;
+			InnerValidator = innerValidator;
+		}
+
+		public DelegatingValidator(Func<object, Task<bool>> asyncCondition, IPropertyValidator innerValidator) {
+			this.condition = _ => true;
+			this.asyncCondition = asyncCondition;
 			InnerValidator = innerValidator;
 		}
 
@@ -51,10 +59,18 @@ namespace FluentValidation.Validators {
 		}
 
 		public Task<IEnumerable<ValidationFailure>> ValidateAsync(PropertyValidatorContext context) {
-			if (condition(context.Instance)) {
-			    return InnerValidator.ValidateAsync(context);
-			}
-			return TaskHelpers.FromResult(Enumerable.Empty<ValidationFailure>());
+			if (!condition(context.Instance))
+				return TaskHelpers.FromResult(Enumerable.Empty<ValidationFailure>());
+
+			if (asyncCondition == null)
+				return InnerValidator.ValidateAsync(context);
+
+			return asyncCondition(context.Instance)
+				.Then(shouldValidate => 
+					shouldValidate
+						? InnerValidator.ValidateAsync(context)
+						: TaskHelpers.FromResult(Enumerable.Empty<ValidationFailure>()),
+					runSynchronously: true);
 		}
 
 		public ICollection<Func<object, object, object>> CustomMessageFormatArguments {

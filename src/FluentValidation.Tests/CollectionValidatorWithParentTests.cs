@@ -127,6 +127,16 @@ namespace FluentValidation.Tests
 		}
 
 		[Test]
+		public void Async_condition_should_work_with_child_collection() {
+			var validator = new TestValidator() {
+				v => v.RuleFor(x => x.Orders).SetCollectionValidator(y => new OrderValidator(y)).WhenAsync(x => TaskHelpers.FromResult(x.Orders.Count == 4 /*there are only 3*/))
+			};
+
+			var result = validator.ValidateAsync(person).Result;
+			result.IsValid.ShouldBeTrue();
+		}
+
+		[Test]
 		public void Skips_null_items()
 		{
 			var validator = new TestValidator {

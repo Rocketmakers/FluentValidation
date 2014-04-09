@@ -100,8 +100,18 @@ namespace FluentValidation.Tests {
 		}
 
 		[Test]
+		public void Should_throw_when_async_predicate_is_null() {
+			typeof (ArgumentNullException).ShouldBeThrownBy(() => builder.SetValidator(new TestPropertyValidator()).WhenAsync(null));
+		}
+
+		[Test]
 		public void Should_throw_when_inverse_predicate_is_null() {
 			typeof(ArgumentNullException).ShouldBeThrownBy(() => builder.SetValidator(new TestPropertyValidator()).Unless(null));
+		}
+
+		[Test]
+		public void Should_throw_when_async_inverse_predicate_is_null() {
+			typeof (ArgumentNullException).ShouldBeThrownBy(() => builder.SetValidator(new TestPropertyValidator()).UnlessAsync(null));
 		}
 
 		[Test]
@@ -111,6 +121,16 @@ namespace FluentValidation.Tests {
 			builder.Rule.CurrentValidator.ShouldBe<DelegatingValidator>();
 
 			var predicateValidator = (DelegatingValidator)builder.Rule.CurrentValidator;
+			predicateValidator.InnerValidator.ShouldBeTheSameAs(validator);
+		}
+
+		[Test]
+		public void Calling_when_async_should_replace_current_validator_with_predicate_validator() {
+			var validator = new TestPropertyValidator();
+			builder.SetValidator(validator).WhenAsync(x => TaskHelpers.FromResult(true));
+			builder.Rule.CurrentValidator.ShouldBe<DelegatingValidator>();
+
+			var predicateValidator = (DelegatingValidator) builder.Rule.CurrentValidator;
 			predicateValidator.InnerValidator.ShouldBeTheSameAs(validator);
 		}
 
@@ -167,6 +187,14 @@ namespace FluentValidation.Tests {
 		{
 			var builder = new RuleBuilder<Person, int>(PropertyRule.Create<Person, int>(x => x.NullableInt.Value));
 			builder.GreaterThanOrEqualTo(3).When(x => x.NullableInt != null);
+			builder.Rule.Validate(new ValidationContext<Person>(new Person(), new PropertyChain(), new DefaultValidatorSelector()));
+		}
+
+		[Test]
+		public void Nullable_object_with_async_condition_should_not_throw()
+		{
+			var builder = new RuleBuilder<Person, int>(PropertyRule.Create<Person, int>(x => x.NullableInt.Value));
+			builder.GreaterThanOrEqualTo(3).WhenAsync(x => TaskHelpers.FromResult(x.NullableInt != null));
 			builder.Rule.Validate(new ValidationContext<Person>(new Person(), new PropertyChain(), new DefaultValidatorSelector()));
 		}
 
