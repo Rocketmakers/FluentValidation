@@ -52,5 +52,7 @@ namespace FluentValidation {
 		Task<IEnumerable<ValidationFailure>> ValidateAsync(ValidationContext context);
 
 		void ApplyCondition(Func<object, bool> predicate, ApplyConditionTo applyConditionTo = ApplyConditionTo.AllValidators);
+
+		void ApplyAsyncCondition(Func<object, Task<bool>> predicate, ApplyConditionTo applyConditionTo = ApplyConditionTo.AllValidators);
 	}
 }

@@ -35,6 +35,7 @@ namespace FluentValidation.Internal {
 		// Work-around for reflection bug in .NET 4.5
 		static Func<object, bool> s_condition = x => true;
 		private Func<object, bool> condition = s_condition;
+		private Func<object, Task<bool>> asyncCondition = null;
 
 		/// <summary>
 		/// Rule set to which this rule belongs.
@@ -102,7 +103,8 @@ namespace FluentValidation.Internal {
 		/// <param name="context">Validation Context</param>
 		/// <returns>A collection of validation failures</returns>
 		public IEnumerable<ValidationFailure> Validate(ValidationContext context) {
-			if (!context.Selector.CanExecute(this, "", context) || !condition(context.InstanceToValidate)) {
+			if (!context.Selector.CanExecute(this, "", context) || !condition(context.InstanceToValidate) ||
+				(asyncCondition != null && !asyncCondition(context.InstanceToValidate).Result)) {
 				return Enumerable.Empty<ValidationFailure>();
 			}
 
@@ -120,14 +122,40 @@ namespace FluentValidation.Internal {
 				return TaskHelpers.FromResult(Enumerable.Empty<ValidationFailure>());
 			}
 
+			return asyncCondition == null
+				? ValidateAsyncInternal(context)
+				: asyncCondition(context.InstanceToValidate).Then(shouldValidate => 
+					shouldValidate
+						? ValidateAsyncInternal(context)
+						: TaskHelpers.FromResult(Enumerable.Empty<ValidationFailure>()),
+					runSynchronously: true);
+		}
+
+		Task<IEnumerable<ValidationFailure>> ValidateAsyncInternal(ValidationContext context) {
 			var newContext = new ValidationContext<T>((T) context.InstanceToValidate, context.PropertyChain, context.Selector);
 			return ValidateAsync(newContext);
 		}
 
 		public void ApplyCondition(Func<object, bool> predicate, ApplyConditionTo applyConditionTo = ApplyConditionTo.AllValidators) {
-			// For custom rules within the DelegateValidator, we ignore ApplyConiditionTo - this is only relevant to chained rules using RuleFor.
+			// For custom rules within the DelegateValidator, we ignore ApplyConditionTo - this is only relevant to chained rules using RuleFor.
 			var originalCondition = this.condition;
 			this.condition = x => predicate(x) && originalCondition(x);
+		}
+
+		public void ApplyAsyncCondition(Func<object, Task<bool>> predicate, ApplyConditionTo applyConditionTo = ApplyConditionTo.AllValidators)
+		{
+			// For custom rules within the DelegateValidator, we ignore ApplyConditionTo - this is only relevant to chained rules using RuleFor.
+			var originalCondition = this.asyncCondition;
+			this.asyncCondition = x => predicate(x).Then(result => {
+					if (!result)
+						return TaskHelpers.FromResult(false);
+
+					if (originalCondition == null)
+						return TaskHelpers.FromResult(true);
+
+					return originalCondition(x);
+				},
+				runSynchronously: true);
 		}
 	}
 }
